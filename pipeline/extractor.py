@@ -52,12 +52,13 @@ class ReadPickle:
 
 
 class TEIExtractor:
-    def __init__(self, file, db, test_tsv=None):
+    def __init__(self, file, db, test_tsv=None, doi=None):
         self.file = file
         self.uni_rank = ReadPickle('uni_rank.pickle')
         self.sjr = ReadPickle('journal_dictionary.pkl')
         self.document = test_tsv
         self.paper = Paper()
+        self.defaultDOI=doi
         with open(file, 'rb') as tei:
             self.soup = BeautifulSoup(tei, features="lxml")
         self.db=db
@@ -65,11 +66,14 @@ class TEIExtractor:
 
     def get_self_citations(self):
         # DOI
-        doi = self.soup.teiheader.find("idno", type="DOI")
-        if doi:
-            self.paper.doi = elem_to_text(doi)
-        elif self.document:
-            self.paper.doi = self.document['doi']
+        if self.defaultDOI:
+            self.paper.doi = self.defaultDOI
+        else:
+            doi = self.soup.teiheader.find("idno", type="DOI")
+            if doi:
+                self.paper.doi = elem_to_text(doi)
+            else:
+                doi=''
         # Title
         title = self.soup.teiheader.find("title")
         if title:
@@ -104,33 +108,45 @@ class TEIExtractor:
                 'self_citations': self.paper.self_citations, 'abstract': self.paper.abstract}
     
     def get_reading_score(self, abstract):
-        if isinstance(abstract,str):
-            if not abstract: return 0
-            return textstat.flesch_reading_ease(abstract)
-        return 0
+        try:
+            if isinstance(abstract,str):
+                if not abstract: return 0
+                return textstat.flesch_reading_ease(abstract)
+            return 0
+        except Exception:
+            return 0
     
     def get_subjectivity(self, abstract):
-        if isinstance(abstract,str):
-            if len(abstract)<10: return -1
-            txtblob = TextBlob(abstract)
-            return txtblob.sentiment.subjectivity
-        return -1
+        try:
+            if isinstance(abstract,str):
+                if len(abstract)<10: return -1
+                txtblob = TextBlob(abstract)
+                return txtblob.sentiment.subjectivity
+            return -1
+        except Exception:
+            return -1
     
     def get_sentiment(self, abstract):
-        if isinstance(abstract,str):
-            if len(abstract)<10: return -1
-            label = predictor.predict(abstract)['label']
-            return int(label)
-        return -1
+        try:
+            if isinstance(abstract,str):
+                if len(abstract)<10: return -1
+                label = predictor.predict(abstract)['label']
+                return int(label)
+            return -1
+        except Exception as e:
+            return -1
+        
         
 
     def extract_paper_info(self):
         # DOI
-        doi = self.soup.teiheader.find("idno", type="DOI")
-        if doi:
-            self.paper.doi = elem_to_text(doi)
-        elif self.document:
-            self.paper.doi = self.document['doi']
+        if self.defaultDOI:
+            self.paper.doi = self.defaultDOI
+        else:
+            doi = self.soup.teiheader.find("idno", type="DOI")
+            if doi:
+                self.paper.doi = elem_to_text(doi)
+            else: self.paper.doi = ''
         # Title
         title = self.soup.teiheader.find("title")
         if title:

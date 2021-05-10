@@ -43,17 +43,27 @@ def strip_punctuation(text: str):
 
 
 def read_darpa_tsv(file):
-    df = pd.read_csv(file, sep="\t")
+    if 'csv' in file:
+        df = pd.read_csv(file)
+    elif 'tsv' in file:
+        df = pd.read_csv(file, sep="\t")
+        
     for index, row in df.iterrows():
         try:
-            yield {"title": row['title_CR'], "pub_year": row['pub_year_CR'], "doi": row['DOI_CR'],
-               "ta3_pid": row['ta3_pid'], "pdf_filename": row['pdf_filename'], "claim4": row['claim4_inftest']}
+            dic = {"title": row['title_CR'], "pub_year": row['pub_year_CR'], "doi": row['DOI_CR'],
+                       "ta3_pid": row['ta3_pid'], "pdf_filename": row['pdf_filename'], "claim4": row['claim4_inftest'], 
+                   "issn": row['ISSN_CR'], "paper_id": row["paper_id"]}
+            dic.update(row)
+            yield dic
         except KeyError:
             ta3_pid = row['pdf_filename'].split()[-1]
-            yield {"title": row['title_CR'], "pub_year": row['pub_year_CR'], "doi": row['DOI_CR'],
-                   "ta3_pid": ta3_pid, "pdf_filename": row['pdf_filename'], "claim4": row['claim4_inftest']}
+            dic={"title": row['title_CR'], "pub_year": row['pub_year_CR'], "doi": row['DOI_CR'],
+                       "ta3_pid": ta3_pid, "pdf_filename": row['pdf_filename'], "claim4": row['claim4_inftest'],
+                 "issn": row['ISSN_CR'], "paper_id": row["paper_id"]}
+            dic.update(row)
+            yield dic
 
-
+            
 def elem_to_text(elem, default=''):
     if elem:
         return elem.getText()

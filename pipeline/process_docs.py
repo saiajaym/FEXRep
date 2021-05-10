@@ -14,6 +14,7 @@ import traceback
 import pandas as pd
 import logcontrol
 import timelogger
+import glob
 import pdb
 
 
@@ -138,7 +139,7 @@ if __name__ == "__main__":
                   'num_hypo_tested', 'real_p', 'real_p_sign', 'p_val_range', 'num_significant',
                   'sample_size',"extend_p", "funded", "Venue_Citation_Count", "Venue_Scholarly_Output",
                   "Venue_Percent_Cited", "Venue_CiteScore", "Venue_SNIP", "Venue_SJR", "avg_pub", "avg_hidx",
-                  "avg_auth_cites", "avg_high_inf_cites","sentiment_agg", "age")
+                  "avg_auth_cites", "avg_high_inf_cites","sentiment_agg", "age", "paper_id")
 
         record = namedtuple('record', fields)
         record.__new__.__defaults__ = (None,) * len(record._fields)
@@ -147,22 +148,24 @@ if __name__ == "__main__":
         header = list(fields)
         csv_write_field_header(writer, header)
         args.data_file = args.file
+        grobid_files = glob.glob(args.grobid_out + '/*')
+        txt_files  = glob.glob(args.pdf_input + '/*')
         for document in read_darpa_tsv(args.file):
             try:
                 print("Processing ", document['pdf_filename'])
-                extractor = TEIExtractor(args.grobid_out + '/' + document['pdf_filename'] + '.tei.xml', document)
+                extractor = TEIExtractor([i for i in grobid_files if '_'+document['paper_id']+'.tei.xml' in i][0] ,database, document, document['DOI_CR'])
                 extraction_stage = extractor.extract_paper_info()
-                p_val_stage = extract_p_values(args.pdf_input + '/' + document['pdf_filename'] + '.txt', document['claim4'])
-                features = dict(**extraction_stage, **p_val_stage)
-                issn = extraction_stage['ISSN']
+                p_val_stage = extract_p_values([i for i in txt_files if '_'+document['paper_id']+'.txt' in i][0], document['claim4'])
+                issn = document['issn']
                 auth = extraction_stage['authors']
                 citations = extraction_stage['citations']
                 del extraction_stage['ISSN']
                 del extraction_stage['authors']
                 del extraction_stage['citations']
                 # Get TAMU features
-                paper_id = document['pdf_filename'].split('_')[-1].replace('.pdf', '')
+                paper_id = document['paper_id']
                 #TAMU
+                features = dict(**extraction_stage, **p_val_stage)
                 tamu_features = get_tamu_features(args.data_file, paper_id, issn, auth, citations,database)
                 select_tamu_features = select_keys(tamu_features, tamu_select_features)
                 
@@ -172,6 +175,8 @@ if __name__ == "__main__":
                 features.update(select_tamu_features)
 
                 features['ta3_pid'] = document['ta3_pid']
+                features["paper_id"] = document["paper_id"]
+                print(features)
                 try:
                     csv_write_record(writer, features, header)
                 except UnicodeDecodeError:
@@ -185,7 +190,7 @@ if __name__ == "__main__":
         print("Execution time: ", end-start)
     elif args.mode == "2400set":
         csv = pd.read_csv(args.file)
-        want = [ 'kw_cs_m5', 'kw_cs_m3', 'kw_cs_m10', 'um_cs_m1', 'um_cs_m2', 'um_cs_m3', 'um_cs_m4','paper_id']
+        want = [ 'kw_cs_m5', 'kw_cs_m3', 'kw_cs_m10', 'um_cs_m1', 'um_cs_m2', 'um_cs_m3', 'um_cs_m4','um_cs_m4', 'paper_id']
         fields = ('doi', 'title', 'num_citations', 'author_count', 'sjr', 'u_rank', 'self_citations',
                   'upstream_influential_methodology_count', 'subject','subject_code','citationVelocity',
                   'influentialCitationCount','references_count','openaccessflag', 'normalized_citations',
@@ -210,15 +215,25 @@ if __name__ == "__main__":
             csv_write_field_header(writer, header)
         # Run pipeline
         xmls = listdir(args.grobid_out)
-        for xml in xmls:
+        
+        #preload required data
+        args.data_file = args.file
+        grobid_files = glob.glob(args.grobid_out + '/*')
+        txt_files  = glob.glob(args.pdf_input + '/*')
+        
+        #for xml in xmls:
+        for document in read_darpa_tsv(args.file):
             try:
                 timelogger.start("overall")
-                print("Processing ", xml)
+                print("Processing ", document['pdf_filename'], document['doi'])
                 #pdb.set_trace()
                 timelogger.start("metadata_apis")
-                extractor = TEIExtractor(args.grobid_out + '/' + xml,database)
+                extractor = TEIExtractor([i for i in grobid_files if '_'+document['paper_id']+'.tei.xml' in i][0] ,database, document, document['doi'])
                 extraction_stage = extractor.extract_paper_info()
-                issn = extraction_stage['ISSN']
+                
+                #extractor = TEIExtractor(args.grobid_out + '/' + xml,database)
+                #extraction_stage = extractor.extract_paper_info()
+                issn = document['issn']
                 auth = extraction_stage['authors']
                 citations = extraction_stage['citations']
                 del extraction_stage['ISSN']
@@ -227,17 +242,18 @@ if __name__ == "__main__":
                 timelogger.stop("metadata_apis")
                 
                 timelogger.start("p-value")
-                p_val_stage = extract_p_values(args.pdf_input + '/' + xml.replace('.tei.xml', '.txt'))
+                p_val_stage = extract_p_values([i for i in txt_files if '_'+document['paper_id']+'.txt' in i][0], document['claim4'])
                 features = dict(**extraction_stage, **p_val_stage)
                 timelogger.stop("p-value")
 
                 # Get TAMU features
                 timelogger.start("tamu")
-                paper_id = xml.split('_')[-1].replace('.xml', '')
+                paper_id = document["paper_id"]
                 tamu_features = get_tamu_features(args.data_file, paper_id, issn, auth, citations,database)
                 select_tamu_features = select_keys(tamu_features, tamu_select_features)
                 features.update(select_tamu_features)
                 timelogger.stop("tamu")
+        
                 print(features)
                 if args.label_range:
                     label_range = args.label_range.split('-')
@@ -245,7 +261,7 @@ if __name__ == "__main__":
                 else:
                     #pdb.set_trace()
                     for i in want:
-                        features[i] = csv[csv['pdf_filename']==xml.replace('.tei.xml', '').strip()][i].values[0]
+                        features[i] = document[i]
                  
                 try:
                     #print(features)

@@ -152,9 +152,10 @@ class PaperInfoCrawler:
         return pd.DataFrame(auth_dict)
 
     def addVenueFeatures(self, df, issn):
+        df['ISSN'] = df['ISSN'].apply(lambda x: x.replace('-','') if 'X' in x else x.lstrip('0').replace('-',''))
         columns = ['Print ISSN', 'Citation Count', 'Scholarly Output', 'Percent Cited', 'CiteScore', 'SNIP', 'SJR',
                    'RANK', 'Rank Out Of']
-        all_venues = pd.read_csv(self.VENUE_METADATA_FILE)
+        all_venues = pd.read_csv(self.VENUE_METADATA_FILE, index_col='Scopus Source ID')
         venue_info = all_venues[columns]
         df_with_venue = pd.merge(df, venue_info, left_on='ISSN', right_on='Print ISSN', how='left')
         imputed = False
@@ -335,12 +336,12 @@ class PaperInfoCrawler:
                     input_file = pd.read_csv(self.INPUT_FILE, sep='\t')
                 else:
                     input_file = pd.read_csv(self.INPUT_FILE)
-                if input_file and input_file[input_file['DOI_CR'] == p_id]['ISSN_CR'].values:
-                    issn = input_file[input_file['DOI_CR'] == p_id]['ISSN_CR'].values[0]
+                if input_file and input_file[input_file['paper_id'] == p_id]['ISSN_CR'].values:
+                    issn = input_file[input_file['paper_id'] == p_id]['ISSN_CR'].values[0]
             except Exception as e:
                 print(e)
         #df with ISSN hopefully
-        print("*****ISSN ", issn )
+        #print("*****ISSN ", issn, type(issn))
         venue_df,auth_df,downstream_df = pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
         try:
             if issn!='-1':
